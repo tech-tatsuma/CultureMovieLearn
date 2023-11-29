@@ -1,0 +1,7 @@
+__pycache__
+venv/
+*.mp4
+*.pt
+*.png
+!requirements.txt
+*.txt
