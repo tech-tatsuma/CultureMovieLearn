@@ -5,3 +5,4 @@ venv/
 *.png
 !requirements.txt
 *.txt
+DS_Store
