@@ -35,7 +35,7 @@ def create_labeled_video_csv(video_paths, csv_content):
     time_ranges = csv_content.split('\n')
     status_dict = {}
     prev_time = 0
-    for range_info in time_ranges:
+    for range_info in time_ranges or not range_info.replace(',', '').isdigit():
         if not range_info.strip():
             continue
         time, status = map(int, range_info.split(','))
@@ -68,6 +68,10 @@ def write_dataframe_to_csv(df, output_path):
     df.to_csv(output_path, index=False)
 
 def main(video_path, timeline_csv_path, output_folder):
+    # 出力フォルダが存在しない場合は作成
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
     # 動画を分割して出力フォルダに保存
     video_segments = split_video(video_path, output_folder)
 
@@ -91,9 +95,9 @@ def main(video_path, timeline_csv_path, output_folder):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('video_path', type=str)
-    parser.add_argument('timeline_csv_path', type=str)
-    parser.add_argument('output_folder', type=str)
+    parser.add_argument('--video_path', type=str)
+    parser.add_argument('--timeline_csv_path', type=str)
+    parser.add_argument('--output_folder', type=str)
     args = parser.parse_args()
 
     main(args.video_path, args.timeline_csv_path, args.output_folder)
