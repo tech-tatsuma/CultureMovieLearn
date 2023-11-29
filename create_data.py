@@ -2,6 +2,7 @@ from moviepy.editor import VideoFileClip
 import os
 import pandas as pd
 import argparse
+from tqdm import tqdm
 
 # Function to split a video into segments, each one second long
 def split_video(video_path, output_folder):
@@ -12,13 +13,19 @@ def split_video(video_path, output_folder):
     outputs = []
 
     # Split and save the video into one-second segments
-    for i in range(duration-1):
+    for i in tqdm(range(duration-1), desc="Splitting video"):
         # Set the time range for the video segment
         subclip = clip.subclip(i, i+1)
 
         # Save the split video to a file (frame rate set to 25fps)
         output_path = os.path.join(output_folder, f"segment_{i}.mp4")
-        subclip.write_videofile(output_path, codec="libx264", fps=25)
+
+        # Check if the file already exists
+        if not os.path.exists(output_path):
+            # Save the split video to a file only if it doesn't exist (frame rate set to 25fps)
+            subclip.write_videofile(output_path, codec="libx264", fps=25, verbose=False, logger=None)
+        else:
+            print(f"File {output_path} already exists. Skipping.")
 
         outputs.append(output_path)
 
@@ -27,26 +34,34 @@ def split_video(video_path, output_folder):
     return outputs
 
 # Function to create a DataFrame of labeled video segments from paths and CSV content
-def create_labeled_video_csv(video_paths, csv_content):
+def create_labeled_video_csv(video_paths, csv_content, duration):
     # Parse the CSV content to store time ranges and statuses in a dictionary
     time_ranges = csv_content.split('\n')
+    print(time_ranges) # ['57,0', '320,2', '50,1', '30,0', '70,2']
     status_dict = {}
     prev_time = 0
-    for range_info in time_ranges or not range_info.replace(',', '').isdigit():
-        if not range_info.strip():
+
+    for range_info in time_ranges:
+        if not range_info.strip() or 'during,status' in range_info:
             continue
         time, status = map(int, range_info.split(','))
-        status_dict[range(prev_time, time)] = status
-        prev_time = time
-    status_dict[range(prev_time, float('inf'))] = 0
+        status_dict[range(prev_time, prev_time+time)] = status
+        prev_time = prev_time+time
+
+    status_dict[range(prev_time, duration)] = 0
 
     # Assign labels to each video segment
     labeled_data = []
     for video_path in video_paths:
-        # Extract time from the file name
-        segment_time = int(video_path.split('_')[-1].split('.')[0])
-        # Find the corresponding status
-        label = next(status for time_range, status in status_dict.items() if segment_time in time_range)
+        file_name = os.path.basename(video_path)
+        segment_time = int(file_name.split('_')[-1].split('.')[0])
+        label = None
+        for time_range, status in status_dict.items():
+            if segment_time in time_range:
+                label = status
+                break
+        if label is None:
+            label = 0
         labeled_data.append((video_path, label))
 
     # Create and return a DataFrame
@@ -55,14 +70,9 @@ def create_labeled_video_csv(video_paths, csv_content):
 
 # Function to read a CSV file and return its content as a string
 def read_csv_to_string(csv_path):
-    # Read the CSV file
     with open(csv_path, 'r') as file:
         lines = file.readlines()
-    lines = lines[1:]
-
-    content = "".join(line.strip() for line in lines)
-    
-    # Return the content as a string
+    content = "\n".join(line.strip() for line in lines[1:])
     return content
 
 # Function to write a DataFrame to a CSV file
@@ -83,7 +93,7 @@ def main(video_path, timeline_csv_path, output_folder):
     timeline_data = read_csv_to_string(timeline_csv_path)
 
     # Create a DataFrame with labeled video data
-    labeled_df = create_labeled_video_csv(video_segments, timeline_data)
+    labeled_df = create_labeled_video_csv(video_segments, timeline_data, len(video_segments))
 
     # Get the parent directory of the output folder
     parent_folder = os.path.dirname(output_folder)
