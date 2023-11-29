@@ -9,7 +9,7 @@ sudo docker build -t culturevideolearn .
 sudo docker run --rm -it --gpus all -v $PWD:/culturevideolearn culturevideolearn:latest
 ```
 ## create_data.py
-<br>動画分割とラベル付けスクリプト</br>
+<h4>動画分割とラベル付けスクリプト</h4>
 このスクリプトは動画を１秒間隔のセグメントに分割し、それらにラベルをつけてcsvファイルに出力するために使用されるものです。このスクリプトは動画の機械学習のデータの準備に利用されます。
 
 ### Requirements
