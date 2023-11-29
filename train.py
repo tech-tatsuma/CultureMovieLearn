@@ -17,20 +17,20 @@ import sys
 from .model import CustomSlowFast
 from .dataset import VideoDataset
 
-# 動画の明るさのランダムクロップのためのクラス
+# Class for applying random crops to video brightness
 class VideoColorJitter:
     def __init__(self, brightness=0, contrast=0, saturation=0, hue=0):
         self.color_jitter = ColorJitter(brightness=brightness, contrast=contrast, saturation=saturation, hue=hue)
 
     def __call__(self, video):
-        # 動画全体に対して一貫した変換を適用するために、変換を初期化
+        # Initialize the transformation for consistent application across the whole video
         transform = self.color_jitter.get_params(self.color_jitter.brightness, self.color_jitter.contrast,
                                                  self.color_jitter.saturation, self.color_jitter.hue)
 
-        # 各フレームに同じ変換を適用
+        # Apply the same transformation to each frame
         return torch.stack([transform(frame) for frame in video])
 
-# シードの設定を行う関数
+# Function for setting seeds for reproducibility
 def seed_everything(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -39,6 +39,7 @@ def seed_everything(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+# Function to calculate the size of the model
 def calculate_model_size(model):
     total_size = 0
     for param in model.parameters():
@@ -52,22 +53,23 @@ def calculate_model_size(model):
 
     print(f"Model size: {total_size_bytes} bytes / {total_size_kb:.2f} KB / {total_size_mb:.2f} MB / {total_size_gb:.4f} GB")
 
+# Main training function
 def train(opt):
 
-    # シードの設定
+    # Setting the seed for reproducibility
     seed_everything(opt.seed)
 
-    # デバイスの設定
+    # Setting up the device (GPU or CPU)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # オプションで入力された値を取得
+    # Extracting values from command line options
     csv_file = opt.data
     epochs = opt.epochs
     patience = opt.patience
     learning_rate = opt.lr
     batch = opt.batch
 
-    # データの前処理
+    # Data preprocessing steps
     transform = Compose([
         UniformTemporalSubsample(8),
         Lambda(lambda x: x / 255.0),
@@ -75,113 +77,118 @@ def train(opt):
         Resize((256, 256)),
         VideoColorJitter(brightness=0.5)
     ])
-    # データセットの作成
+
+    # Creating the dataset
     video_dataset = VideoDataset(csv_file=csv_file, transform=transform)
-    # データの分割
+    # Splitting the data into training, validation, and test sets
     train_size = int(0.7 * len(video_dataset))
     val_test_size = len(video_dataset) - train_size
     train_dataset, val_test_dataset = random_split(video_dataset, [train_size, val_test_size])
     test_size = int(0.33 * len(val_test_dataset))
     val_dataset, test_dataset = random_split(val_test_dataset, [test_size, len(val_test_dataset) - test_size])
-    # データローダの作成
+    # Creating data loaders
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, shuffle=False)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch, shuffle=False)
 
-    # モデルの初期化
+    # Initializing the model
     model = CustomSlowFast(num_classes=1)
 
+    # Utilizing multiple GPUs if available
     if torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         model = nn.DataParallel(model)
 
     model = model.to(device)
 
+    # Calculating model size
     calculate_model_size(model)
 
-    # オプティマイザと損失関数
+    # Setting up the optimizer and loss function
     optimizer = optim.Adam(model.parameters(), lr=opt.learning_rate)
     criterion = BCEWithLogitsLoss()
 
-    # 早期終了のための変数
+    # Initialize minimum validation loss for early stopping
     val_loss_min = None
     val_loss_min_epoch = 0
 
-    # 結果を記録するための配列
+    # Arrays to record the training and validation results
     train_losses = []
     val_losses = []
     val_accuracy = []
 
-    # 訓練ループ
+    # Training loop
     for epoch in range(epochs):
-        # 訓練モード
+        # Set model to training mode
         model.train()
-        # エポックの損失をリセット
+        # Reset epoch's training and validation loss
         train_loss = 0.0
         val_loss = 0.0
 
+        # Training phase
         for i, (inputs, labels) in enumerate(train_loader):
             inputs = inputs.to(device)
             labels = labels.to(device)
 
-            # 勾配をゼロに
+            # Zero the gradients
             optimizer.zero_grad()
 
-            # 順伝播と逆伝播
+            # Forward pass and backward pass
             outputs = model(inputs)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
-            # 損失の取得
+            # Accumulate the loss
             train_loss += loss.item()
 
-        # エポックごとの損失の計算
+        # Calculate loss per epoch
         train_loss /= len(train_loader)
         train_losses.append(train_loss)
 
-        # バリデーションモード
+        # Set model to evaluation mode
         model.eval()
 
-        # accuracyの計算のための変数の初期化
+        # Initialize variables for accuracy calculation
         correct = 0
         total = 0
 
+        # Validation phase
         with torch.no_grad():
             for i, (inputs, labels) in enumerate(val_loader):
                 inputs = inputs.to(device)
                 labels = labels.to(device)
-                # モデルへの入力と出力の取得
+                # Forward pass
                 outputs = model(inputs)
-                # 予測値の計算
+                # Calculate predictions
                 probs = torch.sigmoid(outputs)
                 predicted = probs >= 0.5
-                # accuracyの計算
+                # Accumulate test results
                 total += labels.size(0)
                 correct += (predicted == labels).sum().item()
-                # 損失の計算
+                # Accumulate validation loss
                 val_loss += criterion(outputs, labels).item()
                 
-        # 損失関数の計算
+        # Calculate validation accuracy and loss
         accuracy = 100 * correct / total
-        # バリデーションロスの計算
         val_loss /= len(val_loader)
         val_losses.append(val_loss)
         val_accuracy.append(accuracy)
 
         print(f'Epoch {epoch+1}, Training loss: {train_loss:.4f}, Validation loss: {val_loss:.4f}, Validation Accuracy: {accuracy:.2f}%')
 
-        # 早期終了の判定
+        # Check for early stopping
         if val_loss_min is None or val_loss < val_loss_min:
+            # Save model if validation loss decreased
             model_save_name = f'./latestresult/lr{learning_rate}_ep{epochs}_pa{patience}.pt'
             torch.save(model.state_dict(), model_save_name)
             val_loss_min = val_loss
             val_loss_min_epoch = epoch
         elif (epoch - val_loss_min_epoch) >= patience:
-            # 早期終了
+            # Early stopping if no improvement in validation loss
             print('Early stopping due to validation loss not improving for {} epochs'.format(patience))
             break
 
-    # テストモード
+    # Test phase
     test_loss = []
     test_correct = 0
     test_total = 0  
@@ -190,20 +197,22 @@ def train(opt):
         for inputs, labels in test_loader:
             inputs = inputs
             labels = labels.to(device)
+            # Forward pass
             outputs = model(inputs)
             probs = torch.sigmoid(outputs)
             predicted = probs >= 0.5
+            # Accumulate test results
             test_total += labels.size(0)
             test_correct += (predicted == labels).sum().item()
             cross_loss += criterion(outputs, labels).item()
             test_loss.append(cross_loss)
 
-    # 損失関数の計算
+    # Calculate test loss and accuracy
     mean_test_loss = sum(test_loss) / len(test_loss)
     test_accuracy = 100 * test_correct / test_total
     print(f'Test MSE: {mean_test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%')
 
-    # グラフの描画
+    # Plot training and validation loss and accuracy
     plt.figure(figsize=(15, 5))
     plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.1)
 
@@ -224,13 +233,16 @@ def train(opt):
     plt.title("Accuracy")
     plt.savefig(f'./latestgraph/lr{learning_rate}_ep{epochs}_pa{patience}.png')
 
+    # Return final training and validation loss
     return train_loss, val_loss_min
 
+# Main block to execute the script
 if __name__ == '__main__':
     start_time = datetime.datetime.now()
     print('start time:',start_time)
     sys.stdout.flush()
 
+    # Argument parser for command line options
     parser = argparse.ArgumentParser()
     parser.add_argument('--data', type=str, default='./data/labels.csv', help='path to data file')
     parser.add_argument('--epochs', type=int, default=50, help='number of epochs')
@@ -241,6 +253,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr_search', type=str, default='false', help='whether to perform learning rate search')
     opt = parser.parse_args()
 
+    # Learning rate search if specified
     if opt.lr_search == 'true':
         # Perform learning rate search
         learning_rates = [0.00001, 0.0001, 0.001, 0.01, 0.1]
@@ -279,6 +292,7 @@ if __name__ == '__main__':
         print('final validation loss: ', val_loss)
         sys.stdout.flush()
 
+    # Print script execution time
     end_time = datetime.datetime.now()
     execution_time = end_time - start_time
     print('-----completing training-----')
