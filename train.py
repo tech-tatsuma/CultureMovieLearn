@@ -82,14 +82,11 @@ def train(opt):
     video_dataset = VideoDataset(csv_file=csv_file, transform=transform)
     # Splitting the data into training, validation, and test sets
     train_size = int(0.7 * len(video_dataset))
-    val_test_size = len(video_dataset) - train_size
-    train_dataset, val_test_dataset = random_split(video_dataset, [train_size, val_test_size])
-    test_size = int(0.33 * len(val_test_dataset))
-    val_dataset, test_dataset = random_split(val_test_dataset, [test_size, len(val_test_dataset) - test_size])
+    val_size = len(video_dataset) - train_size
+    train_dataset, val_dataset = random_split(video_dataset, [train_size, val_size])
     # Creating data loaders
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch, shuffle=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, shuffle=False)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch, shuffle=False)
 
     # Initializing the model
     model = CustomSlowFast(num_classes=1)
@@ -126,16 +123,20 @@ def train(opt):
         val_loss = 0.0
 
         # Training phase
-        for i, (inputs, labels) in enumerate(train_loader):
+        for i, (inputs, (current_labels, next_labels)) in enumerate(train_loader):
             inputs = inputs.to(device)
-            labels = labels.to(device)
+            current_labels = current_labels.to(device)
+            next_labels = next_labels.to(device)
 
             # Zero the gradients
             optimizer.zero_grad()
 
             # Forward pass and backward pass
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            current_outputs, next_outputs = model(inputs)
+            loss_current = criterion(current_outputs, current_labels)
+            loss_next = criterion(next_outputs, next_labels)
+            # Combine losses for multitasking
+            loss = loss_current + loss_next
             loss.backward()
             optimizer.step()
             # Accumulate the loss
@@ -154,19 +155,25 @@ def train(opt):
 
         # Validation phase
         with torch.no_grad():
-            for i, (inputs, labels) in enumerate(val_loader):
+            for i, (inputs, (current_labels, next_labels)) in enumerate(val_loader):
                 inputs = inputs.to(device)
-                labels = labels.to(device)
+                current_labels = current_labels.to(device)
+                next_labels = next_labels.to(device)
                 # Forward pass
-                outputs = model(inputs)
+                current_outputs, next_outputs = model(inputs)
                 # Calculate predictions
-                probs = torch.sigmoid(outputs)
-                predicted = probs >= 0.5
-                # Accumulate test results
-                total += labels.size(0)
-                correct += (predicted == labels).sum().item()
-                # Accumulate validation loss
-                val_loss += criterion(outputs, labels).item()
+                probs_current = torch.sigmoid(current_outputs)
+                probs_next = torch.sigmoid(next_outputs)
+                predicted_current = probs_current >= 0.5
+                predicted_next = probs_next >= 0.5
+                # Accumulate validation losses for both tasks
+                val_loss += criterion(current_outputs, current_labels).item()
+                val_loss += criterion(next_outputs, next_labels).item()
+                # Accumulate test results for both tasks
+                total += current_labels.size(0)
+                correct += (predicted_current == current_labels).sum().item()
+                total += next_labels.size(0)
+                correct += (predicted_next == next_labels).sum().item()
                 
         # Calculate validation accuracy and loss
         accuracy = 100 * correct / total
@@ -187,30 +194,6 @@ def train(opt):
             # Early stopping if no improvement in validation loss
             print('Early stopping due to validation loss not improving for {} epochs'.format(patience))
             break
-
-    # Test phase
-    test_loss = []
-    test_correct = 0
-    test_total = 0  
-
-    with torch.no_grad():
-        for inputs, labels in test_loader:
-            inputs = inputs
-            labels = labels.to(device)
-            # Forward pass
-            outputs = model(inputs)
-            probs = torch.sigmoid(outputs)
-            predicted = probs >= 0.5
-            # Accumulate test results
-            test_total += labels.size(0)
-            test_correct += (predicted == labels).sum().item()
-            cross_loss += criterion(outputs, labels).item()
-            test_loss.append(cross_loss)
-
-    # Calculate test loss and accuracy
-    mean_test_loss = sum(test_loss) / len(test_loss)
-    test_accuracy = 100 * test_correct / test_total
-    print(f'Test MSE: {mean_test_loss:.4f}, Test Accuracy: {test_accuracy:.2f}%')
 
     # Plot training and validation loss and accuracy
     plt.figure(figsize=(15, 5))
