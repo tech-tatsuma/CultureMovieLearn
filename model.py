@@ -19,16 +19,12 @@ class CustomSlowFast(nn.Module):
 
     def forward(self, x):
         # print(x.shape)
-        slow_pathway = torch.index_select(
-            x,
-            1,
-            torch.linspace(
-                0, x.shape[1] - 1, x.shape[1] // 4
-            ).long(),
-        )
+        index = torch.linspace(
+            0, x.shape[1] - 1, x.shape[1] // 4
+        ).long().to(self.device)
+        slow_pathway = torch.index_select(x, 1, index)
         fast_pathway = x
         frame_list = [slow_pathway, fast_pathway]
-        file_list = file_list.to(self.device)
 
         # Get features from the SlowFast backbone
         features = self.slowfast(frame_list)
