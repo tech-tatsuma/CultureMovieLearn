@@ -2,9 +2,10 @@ import torch
 from torch import nn
 from torch.nn import BCEWithLogitsLoss
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import random_split
+from torchvision.transforms import functional as F
 
-from pytorchvideo.transforms import UniformTemporalSubsample, ColorJitter
+from pytorchvideo.transforms import UniformTemporalSubsample
 from torchvision.transforms import Compose, Lambda, Normalize, Resize
 
 import random
@@ -13,22 +14,46 @@ import matplotlib.pyplot as plt
 import argparse
 import datetime
 import sys
+import os
+import warnings
+from tqdm import tqdm
+warnings.filterwarnings("ignore", category=UserWarning, module="torchvision.transforms.functional_tensor")
 
-from .model import CustomSlowFast
-from .dataset import VideoDataset
+from model import CustomSlowFast
+from dataset import VideoDataset
 
 # Class for applying random crops to video brightness
 class VideoColorJitter:
     def __init__(self, brightness=0, contrast=0, saturation=0, hue=0):
-        self.color_jitter = ColorJitter(brightness=brightness, contrast=contrast, saturation=saturation, hue=hue)
+        self.brightness = brightness
+        self.contrast = contrast
+        self.saturation = saturation
+        self.hue = hue
 
     def __call__(self, video):
-        # Initialize the transformation for consistent application across the whole video
-        transform = self.color_jitter.get_params(self.color_jitter.brightness, self.color_jitter.contrast,
-                                                 self.color_jitter.saturation, self.color_jitter.hue)
+        video = video.permute(1, 0, 2, 3)
+        brightness_factor = random.uniform(max(0, 1 - self.brightness), 1 + self.brightness)
+        contrast_factor = random.uniform(max(0, 1 - self.contrast), 1 + self.contrast)
+        saturation_factor = random.uniform(max(0, 1 - self.saturation), 1 + self.saturation)
+        hue_factor = random.uniform(-self.hue, self.hue)
 
-        # Apply the same transformation to each frame
-        return torch.stack([transform(frame) for frame in video])
+        transformed_video = []
+        for frame in video:
+            frame = F.adjust_brightness(frame, brightness_factor)
+            frame = F.adjust_contrast(frame, contrast_factor)
+            frame = F.adjust_saturation(frame, saturation_factor)
+            frame = F.adjust_hue(frame, hue_factor)
+            transformed_video.append(frame)
+
+        return torch.stack(transformed_video).permute(1, 0, 2, 3)
+
+def normalize_video(video, mean, std):
+    normalized_video = []
+    for frame in video.permute(1, 0, 2, 3):
+        normalized_frame = Normalize(mean, std)(frame)
+        normalized_video.append(normalized_frame)
+    return torch.stack(normalized_video, dim=1)
+
 
 # Function for setting seeds for reproducibility
 def seed_everything(seed):
@@ -69,17 +94,19 @@ def train(opt):
     learning_rate = opt.lr
     batch = opt.batch
 
+    addpath = os.path.dirname(csv_file)
+
     # Data preprocessing steps
     transform = Compose([
-        UniformTemporalSubsample(8),
+        UniformTemporalSubsample(25),
         Lambda(lambda x: x / 255.0),
-        Normalize(mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225]),
+        Lambda(lambda x: normalize_video(x, mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225])),
         Resize((256, 256)),
         VideoColorJitter(brightness=0.5)
     ])
 
     # Creating the dataset
-    video_dataset = VideoDataset(csv_file=csv_file, transform=transform)
+    video_dataset = VideoDataset(csv_file=csv_file, transform=transform, addpath=addpath)
     # Splitting the data into training, validation, and test sets
     train_size = int(0.7 * len(video_dataset))
     val_size = len(video_dataset) - train_size
@@ -89,7 +116,7 @@ def train(opt):
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, shuffle=False)
 
     # Initializing the model
-    model = CustomSlowFast(num_classes=1)
+    model = CustomSlowFast(device=device, num_classes=1)
 
     # Utilizing multiple GPUs if available
     if torch.cuda.device_count() > 1:
@@ -102,7 +129,7 @@ def train(opt):
     calculate_model_size(model)
 
     # Setting up the optimizer and loss function
-    optimizer = optim.Adam(model.parameters(), lr=opt.learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=opt.lr)
     criterion = BCEWithLogitsLoss()
 
     # Initialize minimum validation loss for early stopping
@@ -115,7 +142,7 @@ def train(opt):
     val_accuracy = []
 
     # Training loop
-    for epoch in range(epochs):
+    for epoch in tqdm(range(epochs)):
         # Set model to training mode
         model.train()
         # Reset epoch's training and validation loss

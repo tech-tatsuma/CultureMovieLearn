@@ -4,11 +4,13 @@ from torch.utils.data import Dataset
 from torchvision.io import read_video
 
 class VideoDataset(Dataset):
-    def __init__(self, csv_file, transform=None):
+    def __init__(self, csv_file, transform=None, addpath=None):
         # Get the DataFrame from the CSV file
         self.data_frame = pd.read_csv(csv_file)
         # Initialize the transform
         self.transform = transform
+
+        self.add_path = addpath
 
     def __len__(self):
         return len(self.data_frame)
@@ -17,7 +19,7 @@ class VideoDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
         # Get the video path and label from the DataFrame
-        video_path = self.data_frame.iloc[idx, 0]
+        video_path = self.add_path + "/" + self.data_frame.iloc[idx, 0]
         # Get the current and next label
         current_label = self.data_frame.iloc[idx, 1]
         # Check if next index exists, if not use current label again
@@ -27,6 +29,9 @@ class VideoDataset(Dataset):
             next_label = current_label
         # Read the video from the path
         video, _, _ = read_video(video_path, start_pts=0, end_pts=None, pts_unit='sec')
+        # print(video.shape)
+        video = video.permute(3, 0, 1, 2)
+        # print(video.shape)
         # Apply the transform to the video
         if self.transform:
             video = self.transform(video)
