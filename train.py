@@ -116,10 +116,10 @@ def train(opt):
     transform = Compose([
         UniformTemporalSubsample(25),
         Lambda(lambda x: x / 255.0),
-        VideoGrayscale(num_output_channels=3),
+        # VideoGrayscale(num_output_channels=3),
         Lambda(lambda x: normalize_video(x, mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225])),
         Resize((256, 256)),
-        # VideoColorJitter(brightness=0.5)
+        VideoColorJitter(brightness=0.5)
     ])
 
     # Creating the dataset

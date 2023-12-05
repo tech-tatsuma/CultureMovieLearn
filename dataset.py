@@ -42,6 +42,10 @@ class VideoDataset(Dataset):
 
         current_label = self.data_frame.iloc[idx, 1]
         next_label = self.data_frame.iloc[idx + 1, 1] if idx + 1 < len(self.data_frame) else current_label
+        if current_label == 2:
+            current_label = 1
+        if next_label == 2:
+            next_label = 1
 
         current_label = torch.tensor(current_label, dtype=torch.float)
         next_label = torch.tensor(next_label, dtype=torch.float)
