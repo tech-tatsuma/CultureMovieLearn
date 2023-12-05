@@ -6,7 +6,7 @@ from torch.utils.data import random_split
 from torchvision.transforms import functional as F
 
 from pytorchvideo.transforms import UniformTemporalSubsample
-from torchvision.transforms import Compose, Lambda, Normalize, Resize
+from torchvision.transforms import Compose, Lambda, Normalize, Resize, Grayscale
 
 import random
 import numpy as np
@@ -78,6 +78,22 @@ def calculate_model_size(model):
 
     print(f"Model size: {total_size_bytes} bytes / {total_size_kb:.2f} KB / {total_size_mb:.2f} MB / {total_size_gb:.4f} GB")
 
+class VideoGrayscale:
+    def __init__(self, num_output_channels=1):
+        self.num_output_channels = num_output_channels
+
+    def __call__(self, video):
+        grayscale_frames = []
+        for t in range(video.size(1)):
+            frame = video[:, t, :, :]
+            frame = F.to_pil_image(frame) 
+            frame = F.to_grayscale(frame, num_output_channels=self.num_output_channels)
+            frame = F.to_tensor(frame)
+            grayscale_frames.append(frame)
+
+        return torch.stack(grayscale_frames, dim=1) 
+
+
 # Main training function
 def train(opt):
 
@@ -100,9 +116,10 @@ def train(opt):
     transform = Compose([
         UniformTemporalSubsample(25),
         Lambda(lambda x: x / 255.0),
+        VideoGrayscale(num_output_channels=3),
         Lambda(lambda x: normalize_video(x, mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225])),
         Resize((256, 256)),
-        VideoColorJitter(brightness=0.5)
+        # VideoColorJitter(brightness=0.5)
     ])
 
     # Creating the dataset
@@ -160,8 +177,8 @@ def train(opt):
 
             # Forward pass and backward pass
             current_outputs, next_outputs = model(inputs)
-            loss_current = criterion(current_outputs, current_labels)
-            loss_next = criterion(next_outputs, next_labels)
+            loss_current = criterion(current_outputs, current_labels.unsqueeze(1))
+            loss_next = criterion(next_outputs, next_labels.unsqueeze(1))
             # Combine losses for multitasking
             loss = loss_current + loss_next
             loss.backward()
@@ -209,6 +226,7 @@ def train(opt):
         val_accuracy.append(accuracy)
 
         print(f'Epoch {epoch+1}, Training loss: {train_loss:.4f}, Validation loss: {val_loss:.4f}, Validation Accuracy: {accuracy:.2f}%')
+        sys.stdout.flush()
 
         # Check for early stopping
         if val_loss_min is None or val_loss < val_loss_min:
@@ -220,6 +238,7 @@ def train(opt):
         elif (epoch - val_loss_min_epoch) >= patience:
             # Early stopping if no improvement in validation loss
             print('Early stopping due to validation loss not improving for {} epochs'.format(patience))
+            sys.stdout.flush()
             break
 
     # Plot training and validation loss and accuracy
