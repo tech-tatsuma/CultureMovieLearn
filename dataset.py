@@ -6,7 +6,7 @@ import sys
 import os
 
 class VideoDataset(Dataset):
-    def __init__(self, csv_file, transform=None, addpath=None, cache_dir='/data2/furuya/cache'):
+    def __init__(self, csv_file, transform=None, addpath=None, cache_dir='./cache'):
         # Get the DataFrame from the CSV file
         self.data_frame = pd.read_csv(csv_file)
         # Initialize the transform
