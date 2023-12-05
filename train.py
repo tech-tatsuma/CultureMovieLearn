@@ -208,11 +208,11 @@ def train(opt):
                 # Calculate predictions
                 probs_current = torch.sigmoid(current_outputs)
                 probs_next = torch.sigmoid(next_outputs)
-                predicted_current = probs_current >= 0.5
-                predicted_next = probs_next >= 0.5
+                predicted_current = (probs_current >= 0.5).squeeze()
+                predicted_next = (probs_next >= 0.5).squeeze()
                 # Accumulate validation losses for both tasks
-                val_loss += criterion(current_outputs, current_labels).item()
-                val_loss += criterion(next_outputs, next_labels).item()
+                val_loss += criterion(current_outputs, current_labels.unsqueeze(1)).item()
+                val_loss += criterion(next_outputs, next_labels.unsqueeze(1)).item()
                 # Accumulate test results for both tasks
                 total += current_labels.size(0)
                 correct += (predicted_current == current_labels).sum().item()
