@@ -47,19 +47,23 @@ def main(opt):
     time_list = []
 
     for idx, row in df.iterrows():
-        next_output = None
+        predicted_next = None
         if idx%2 == 0:
             video_path = row[0]
             start_time = datetime.datetime.now()
             video = video2tensor(video_path).to(device)
             video = video.unsqueeze(0)
             with torch.no_grad():
-                current_output, next_output = model(video)
-                predictions.append(current_output.item())
+                current_output, next_output_origin = model(video)
+                current_output = torch.sigmoid(current_output)
+                next_output = torch.sigmoid(next_output_origin)
+                predicted_current = (current_output >=0.5).squeeze()
+                predicted_next = (next_output >=0.5).squeeze()
+                predictions.append(predicted_current.item())
             end_time = datetime.datetime.now()
             time_list.append((end_time - start_time).total_seconds())
         else:
-            predictions.append(next_output.item())
+            predictions.append(predicted_next.item())
 
     df['prediction'] = predictions
     df.to_csv(opt.output_csv, index=False)

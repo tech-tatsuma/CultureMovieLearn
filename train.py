@@ -214,6 +214,8 @@ def train(opt):
                 val_loss += criterion(current_outputs, current_labels.unsqueeze(1)).item()
                 val_loss += criterion(next_outputs, next_labels.unsqueeze(1)).item()
                 # Accumulate test results for both tasks
+                current_labels = current_labels.int()
+                next_labels = next_labels.int()
                 total += current_labels.size(0)
                 correct += (predicted_current == current_labels).sum().item()
                 total += next_labels.size(0)
