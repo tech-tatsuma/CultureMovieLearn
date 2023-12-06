@@ -8,28 +8,24 @@ sudo docker build -t culturevideolearn .
 ```
 sudo docker run --rm -it --gpus all -v $PWD:/culturevideolearn culturevideolearn:latest
 ```
-## create_data.py
-<h4>動画分割とラベル付けスクリプト</h4>
-このスクリプトは動画を１秒間隔のセグメントに分割し、それらにラベルをつけてcsvファイルに出力するために使用される。
 
-### Requirements
+## Requirements
 
 - Python 3
 - moviepy: 動画の読み込みと分割に使用
 - pandas: データ操作とCSVファイルの作成に使用
 - argparse: コマンドライン引数の処理に使用
-### 実行方法
-<h4>データの作成</h4>
-
+## 実行方法
+### データの作成
 ```
 python create_data.py --video_path [動画ファイルへのパス] --timeline_csv_path [タイムラインCSVファイルへのパス] --output_folder [出力ディレクトリへのパス]
 ```
+このスクリプトは動画を１秒間隔のセグメントに分割し、それらにラベルをつけてcsvファイルに出力するために使用される。
 
 - --video_path: 処理する動画ファイルへのパス
 - --timeline_csv_path: 動画の各セグメントに対応するラベルが記述されたCSVファイルへのパス
 - --output_folder: 分割された動画ファイルとラベル付けされたCSVを保存するディレクトリへのパス
-<h4>データの学習</h4>
-
+### データの学習
 ```
 python train.py --data [csvファイルパス] --epochs [学習回数] --patience [早期終了パラメータ] --batch [バッチサイズ] --lr [学習率] --seed [ランダムシード] --lr_search [学習率探索]
 ```
@@ -37,7 +33,7 @@ python train.py --data [csvファイルパス] --epochs [学習回数] --patienc
 - --data: create_data.pyの実行により作成されたcsvファイルのパスを指定する
 - --patience: validation lossの値がpatience回連続で下がらなかった場合にプログラムは早期終了する
 - --lr_search: 最適な学習率が分からない場合はこのパラメータを'true'にする
-<h4>テスト</h4>
+### テスト
 ```
 python test.py --csv_file [テストに利用するcsvのパス] --model_path [モデルのパス] --output_csv [出力するcsvファイルのパス] 
 ```
