@@ -44,3 +44,7 @@ python test.py --csv_file [テストに利用するcsvのパス] --model_path [�
 ## Model
 ### CustomSlowFastネットワーク
 このネットワークは、動画分類のためのSlowFastネットワークアーキテクチャを使用したカスタムニューラルネットワーク。SlowFastモデルは動画内の早い動きと遅い動きの両方を捉えることができるため、動画内の物体の動きに敏感なネットワークとなっている。
+
+### 参考
+- https://arxiv.org/abs/1812.03982
+- https://github.com/facebookresearch/SlowFast
