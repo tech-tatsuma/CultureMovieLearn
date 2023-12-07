@@ -13,6 +13,11 @@ import matplotlib.pyplot as plt
 
 from model import CustomSlowFast
 
+def evaluate_predictions(true_labels, predictions):
+    correct = sum([1 for true, pred in zip(true_labels, predictions) if true == pred])
+    accuracy = correct / len(true_labels)
+    return accuracy
+
 def normalize_video(video, mean, std):
     normalized_video = []
     for frame in video.permute(1, 0, 2, 3):
@@ -48,37 +53,36 @@ def main(opt):
 
     df = pd.read_csv(csv_file)
     predictions = []
-    time_list = []
     plot_list = []
-    prediction_numbers = []
+    true_labels = df['status'].tolist()
+    thresholds = [60, 70, 80, 90, 100]
+    best_threshold = None
+    best_accuracy = 0
 
-    for idx, row in df.iterrows():
-        predicted_next = None
-        if idx%2 == 0:
-            video_path = row[0]
-            video_path = os.path.join(addpath, video_path)
-            start_time = datetime.datetime.now()
-            video = video2tensor(video_path).to(device)
-            video = video.unsqueeze(0)
-            with torch.no_grad():
-                current_output, next_output_origin = model(video)
-                plot_list.append(current_output.item())
-                plot_list.append(next_output_origin.item())
-                predicted_current = (current_output >= 100).squeeze()
-                predicted_next = (next_output_origin >= 100).squeeze()
-                predictions.append(predicted_current.item())
-                predicted_next = predicted_next.item()
-                predictions.append(predicted_next)
-                prediction_numbers.append(current_output.item())
-                prediction_numbers.append(next_output_origin.item())
-            end_time = datetime.datetime.now()
-            time_list.append((end_time - start_time).total_seconds())
+    for threshold in thresholds:
+        predictions = []
+        for idx, row in df.iterrows():
+            predicted_next = None
+            if idx%2 == 0:
+                video_path = row[0]
+                video_path = os.path.join(addpath, video_path)
+                video = video2tensor(video_path).to(device)
+                video = video.unsqueeze(0)
+                with torch.no_grad():
+                    current_output, next_output_origin = model(video)
+                    plot_list.append(current_output.item())
+                    plot_list.append(next_output_origin.item())
+                    predicted_current = (current_output >= threshold).squeeze()
+                    predicted_next = (next_output_origin >= threshold).squeeze()
+                    predictions.append(predicted_current.item())
+                    predictions.append(predicted_next.item())
 
-    df['prediction'] = predictions
-    df['prediction_number'] = prediction_numbers
-    df.to_csv(opt.output_csv, index=False)
-    average_time = sum(time_list)/len(time_list)
-    print(f'Average time: {average_time} seconds')
+        accuracy = evaluate_predictions(true_labels, predictions)
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            best_threshold = threshold
+
+    print(f'Best threshold: {best_threshold} with accuracy: {best_accuracy}')
 
     plt.plot(plot_list, marker='o', linestyle='-')
     plt.title("Test Predictions")
@@ -91,7 +95,6 @@ if __name__ == '__main__':
     argumentparser = argparse.ArgumentParser()
     argumentparser.add_argument('--csv_file', type=str, required=True)
     argumentparser.add_argument('--model_path', type=str, required=True)
-    argumentparser.add_argument('--output_csv', type=str, required=True)
     opt = argumentparser.parse_args()
     main(opt)
     
