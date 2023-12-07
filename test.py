@@ -7,6 +7,8 @@ from torchvision.io import read_video
 import pandas as pd
 import argparse
 import datetime
+import os
+import sys
 
 from model import CustomSlowFast
 
@@ -39,6 +41,7 @@ def load_model(model_path, device):
 
 def main(opt):
     csv_file = opt.csv_file
+    addpath = os.path.dirname(csv_file)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = load_model(opt.model_path, device)
 
@@ -50,20 +53,23 @@ def main(opt):
         predicted_next = None
         if idx%2 == 0:
             video_path = row[0]
+            video_path = os.path.join(addpath, video_path)
             start_time = datetime.datetime.now()
             video = video2tensor(video_path).to(device)
             video = video.unsqueeze(0)
             with torch.no_grad():
                 current_output, next_output_origin = model(video)
+                print(f"current: {current_output}, next: {next_output_origin}")
                 current_output = torch.sigmoid(current_output)
                 next_output = torch.sigmoid(next_output_origin)
                 predicted_current = (current_output >=0.5).squeeze()
                 predicted_next = (next_output >=0.5).squeeze()
+                sys.stdout.flush()
                 predictions.append(predicted_current.item())
+                predicted_next = predicted_next.item()
+                predictions.append(predicted_next)
             end_time = datetime.datetime.now()
             time_list.append((end_time - start_time).total_seconds())
-        else:
-            predictions.append(predicted_next.item())
 
     df['prediction'] = predictions
     df.to_csv(opt.output_csv, index=False)

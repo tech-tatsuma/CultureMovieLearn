@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.nn import BCEWithLogitsLoss
 import torch.optim as optim
-from torch.utils.data import random_split
+from torch.utils.data import random_split, WeightedRandomSampler
 from torchvision.transforms import functional as F
 
 from pytorchvideo.transforms import UniformTemporalSubsample
@@ -18,6 +18,7 @@ import os
 import warnings
 from tqdm import tqdm
 warnings.filterwarnings("ignore", category=UserWarning, module="torchvision.transforms.functional_tensor")
+from collections import Counter
 
 from model import CustomSlowFast
 from dataset import VideoDataset
@@ -78,6 +79,24 @@ def calculate_model_size(model):
 
     print(f"Model size: {total_size_bytes} bytes / {total_size_kb:.2f} KB / {total_size_mb:.2f} MB / {total_size_gb:.4f} GB")
 
+def create_balanced_sampler(dataset):
+    label_counts = Counter()
+    for _, (current_label, next_label) in dataset:
+        label_counts[current_label.item()] += 1
+        label_counts[next_label.item()] += 1
+
+    print("Label Counts:")
+    for label, count in label_counts.items():
+        print(f"Label {label}: {count} samples")
+
+    weights = {label: 1.0 / count for label, count in label_counts.items()}
+    
+    sample_weights = [weights[current_label.item()] + weights[next_label.item()] for _, (current_label, next_label) in dataset]
+    
+    sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
+    
+    return sampler
+
 class VideoGrayscale:
     def __init__(self, num_output_channels=1):
         self.num_output_channels = num_output_channels
@@ -128,9 +147,13 @@ def train(opt):
     train_size = int(0.7 * len(video_dataset))
     val_size = len(video_dataset) - train_size
     train_dataset, val_dataset = random_split(video_dataset, [train_size, val_size])
+
+    train_sampler = create_balanced_sampler(train_dataset)
+    val_sampler = create_balanced_sampler(val_dataset)
+
     # Creating data loaders
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, shuffle=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch, sampler=train_sampler)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, sampler=val_sampler)
 
     # Initializing the model
     model = CustomSlowFast(device=device, num_classes=1)
@@ -203,23 +226,27 @@ def train(opt):
                 inputs = inputs.to(device)
                 current_labels = current_labels.to(device)
                 next_labels = next_labels.to(device)
+
                 # Forward pass
                 current_outputs, next_outputs = model(inputs)
-                # Calculate predictions
+
+                # Convert outputs to probabilities
                 probs_current = torch.sigmoid(current_outputs)
                 probs_next = torch.sigmoid(next_outputs)
                 predicted_current = (probs_current >= 0.5).squeeze()
                 predicted_next = (probs_next >= 0.5).squeeze()
+
                 # Accumulate validation losses for both tasks
                 val_loss += criterion(current_outputs, current_labels.unsqueeze(1)).item()
                 val_loss += criterion(next_outputs, next_labels.unsqueeze(1)).item()
-                # Accumulate test results for both tasks
-                current_labels = current_labels.int()
-                next_labels = next_labels.int()
+
+                # Accumulate accuracy and F1 score
                 total += current_labels.size(0)
                 correct += (predicted_current == current_labels).sum().item()
                 total += next_labels.size(0)
                 correct += (predicted_next == next_labels).sum().item()
+            
+            accuracy = 100 * correct / total
                 
         # Calculate validation accuracy and loss
         accuracy = 100 * correct / total
@@ -227,7 +254,7 @@ def train(opt):
         val_losses.append(val_loss)
         val_accuracy.append(accuracy)
 
-        print(f'Epoch {epoch+1}, Training loss: {train_loss:.4f}, Validation loss: {val_loss:.4f}, Validation Accuracy: {accuracy:.2f}%')
+        print(f'Epoch {epoch+1}, Training loss: {train_loss:.4f}, Validation loss: {val_loss:.4f}, Validation Accuracy: {accuracy:.2f}%, Validation F1 Score: {f1_score_avg:.4f}')
         sys.stdout.flush()
 
         # Check for early stopping
