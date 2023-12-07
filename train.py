@@ -254,7 +254,7 @@ def train(opt):
         val_losses.append(val_loss)
         val_accuracy.append(accuracy)
 
-        print(f'Epoch {epoch+1}, Training loss: {train_loss:.4f}, Validation loss: {val_loss:.4f}, Validation Accuracy: {accuracy:.2f}%, Validation F1 Score: {f1_score_avg:.4f}')
+        print(f'Epoch {epoch+1}, Training loss: {train_loss:.4f}, Validation loss: {val_loss:.4f}, Validation Accuracy: {accuracy:.2f}%')
         sys.stdout.flush()
 
         # Check for early stopping
