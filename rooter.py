@@ -55,10 +55,9 @@ async def predict_video(file: UploadFile = File(...)):
 
     with torch.no_grad():
         current_output, next_output = model(video_tensor.unsqueeze(0))
-        current_output = torch.sigmoid(current_output)
-        next_output = torch.sigmoid(next_output)
-        predicted_current = (current_output >=0.5).squeeze()
-        predicted_next = (next_output >=0.5).squeeze()
+        
+        _, predicted_current = torch.max(current_outputs, 1)
+        _, predicted_next = torch.max(next_outputs, 1)
 
     os.remove(temp_file_path)
 
