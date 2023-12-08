@@ -37,6 +37,9 @@ python train.py --data [csvファイルパス] --epochs [学習回数] --patienc
 ```
 python test.py --csv_file [テストに利用するcsvのパス] --model_path [モデルのパス] --output_csv [出力するcsvファイルのパス] 
 ```
+テストでは、予測値と実際の値を比較するためのグラフと入力で与えられたCSVファイルに予測値を書き込んだCSVファイルが出力される。
+### API実装
+本レポジトリのwebapiブランチにFastAPIのAPI実装のためのサンプルコードをアップしているため、そこを参照。
 
 ### Note
 - タイムラインCSVファイルは、各行に時間,ラベルの形式で記述されている必要がある。
@@ -46,5 +49,7 @@ python test.py --csv_file [テストに利用するcsvのパス] --model_path [�
 このネットワークは、動画分類のためのSlowFastネットワークアーキテクチャを使用したカスタムニューラルネットワーク。SlowFastモデルは動画内の早い動きと遅い動きの両方を捉えることができるため、動画内の物体の動きに敏感なネットワークとなっている。
 
 ### 参考
+SlowFastNetworksに関する情報は以下のURLから
+
 - https://arxiv.org/abs/1812.03982
 - https://github.com/facebookresearch/SlowFast
