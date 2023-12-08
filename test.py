@@ -43,7 +43,11 @@ def load_model(model_path, device):
 def main(opt):
     csv_file = opt.csv_file
     addpath = os.path.dirname(csv_file)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device_type = opt.device
+    if device_type == 'GPU':
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    else:
+        device = torch.device('cpu')
     model = load_model(opt.model_path, device)
 
     df = pd.read_csv(csv_file)
@@ -93,6 +97,8 @@ if __name__ == '__main__':
     argumentparser.add_argument('--csv_file', type=str, required=True)
     argumentparser.add_argument('--model_path', type=str, required=True)
     argumentparser.add_argument('--output_csv', type=str, required=True)
+    argumentparser.add_argument('--device', type=str, default='GPU')
     opt = argumentparser.parse_args()
+    print(opt)
     main(opt)
     
