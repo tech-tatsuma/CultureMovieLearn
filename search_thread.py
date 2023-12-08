@@ -55,7 +55,7 @@ def main(opt):
     predictions = []
     plot_list = []
     true_labels = df['status'].tolist()
-    thresholds = [60, 70, 80, 90, 100]
+    thresholds = [60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110]
     best_threshold = None
     best_accuracy = 0
 
