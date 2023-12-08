@@ -8,6 +8,8 @@ from torchvision.transforms import functional as F
 from pytorchvideo.transforms import UniformTemporalSubsample
 from torchvision.transforms import Compose, Lambda, Normalize, Resize, Grayscale
 
+from sklearn.metrics import confusion_matrix
+
 import random
 import numpy as np
 import matplotlib.pyplot as plt
@@ -152,11 +154,11 @@ def train(opt):
     val_sampler = create_balanced_sampler(val_dataset)
 
     # Creating data loaders
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch, sampler=train_sampler)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, sampler=val_sampler)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch, sampler=train_sampler, num_workers=4)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, sampler=val_sampler, num_workers=4)
 
     # Initializing the model
-    model = CustomSlowFast(device=device, num_classes=1)
+    model = CustomSlowFast(device=device, num_classes=2)
 
     # Utilizing multiple GPUs if available
     if torch.cuda.device_count() > 1:
@@ -170,7 +172,8 @@ def train(opt):
 
     # Setting up the optimizer and loss function
     optimizer = optim.Adam(model.parameters(), lr=opt.lr)
-    criterion = BCEWithLogitsLoss()
+    # criterion = BCEWithLogitsLoss()
+    criterion = nn.CrossEntropyLoss()
 
     # Initialize minimum validation loss for early stopping
     val_loss_min = None
@@ -189,6 +192,10 @@ def train(opt):
         train_loss = 0.0
         val_loss = 0.0
 
+        # Initialize confusion matrices for each task
+        confusion_matrix_current = np.zeros((2, 2))
+        confusion_matrix_next = np.zeros((2, 2)) 
+
         # Training phase
         for i, (inputs, (current_labels, next_labels)) in enumerate(train_loader):
             inputs = inputs.to(device)
@@ -200,10 +207,10 @@ def train(opt):
 
             # Forward pass and backward pass
             current_outputs, next_outputs = model(inputs)
-            loss_current = criterion(current_outputs, current_labels.unsqueeze(1))
-            loss_next = criterion(next_outputs, next_labels.unsqueeze(1))
+            loss_current = criterion(current_outputs, current_labels)
+            loss_next = criterion(next_outputs, next_labels)
             # Combine losses for multitasking
-            loss = loss_current + loss_next
+            loss = (loss_current + loss_next) / 2
             loss.backward()
             optimizer.step()
             # Accumulate the loss
@@ -222,6 +229,13 @@ def train(opt):
 
         # Validation phase
         with torch.no_grad():
+
+            # Initialize lists to store true labels and predictions for each task
+            all_current_labels = []
+            all_next_labels = []
+            all_predicted_current = []
+            all_predicted_next = []
+
             for i, (inputs, (current_labels, next_labels)) in enumerate(val_loader):
                 inputs = inputs.to(device)
                 current_labels = current_labels.to(device)
@@ -230,21 +244,25 @@ def train(opt):
                 # Forward pass
                 current_outputs, next_outputs = model(inputs)
 
-                # Convert outputs to probabilities
-                probs_current = torch.sigmoid(current_outputs)
-                probs_next = torch.sigmoid(next_outputs)
-                predicted_current = (probs_current >= 0.5).squeeze()
-                predicted_next = (probs_next >= 0.5).squeeze()
+                # Predicted class with highest probability
+                _, predicted_current = torch.max(current_outputs, 1)
+                _, predicted_next = torch.max(next_outputs, 1)
 
                 # Accumulate validation losses for both tasks
-                val_loss += criterion(current_outputs, current_labels.unsqueeze(1)).item()
-                val_loss += criterion(next_outputs, next_labels.unsqueeze(1)).item()
+                val_loss += criterion(current_outputs, current_labels).item()
+                val_loss += criterion(next_outputs, next_labels).item()
 
-                # Accumulate accuracy and F1 score
+                # Accumulate accuracy
                 total += current_labels.size(0)
                 correct += (predicted_current == current_labels).sum().item()
                 total += next_labels.size(0)
                 correct += (predicted_next == next_labels).sum().item()
+
+                # Store predictions and labels
+                all_current_labels.extend(current_labels.cpu().numpy())
+                all_next_labels.extend(next_labels.cpu().numpy())
+                all_predicted_current.extend(predicted_current.cpu().numpy())
+                all_predicted_next.extend(predicted_next.cpu().numpy())
             
             accuracy = 100 * correct / total
                 
@@ -254,7 +272,13 @@ def train(opt):
         val_losses.append(val_loss)
         val_accuracy.append(accuracy)
 
+        # Calculate and display confusion matrix for each task
+        confusion_matrix_current = confusion_matrix(all_current_labels, all_predicted_current)
+        confusion_matrix_next = confusion_matrix(all_next_labels, all_predicted_next)
+
         print(f'Epoch {epoch+1}, Training loss: {train_loss:.4f}, Validation loss: {val_loss:.4f}, Validation Accuracy: {accuracy:.2f}%')
+        print(f'Confusion Matrix for Current Task:\n{confusion_matrix_current}')
+        print(f'Confusion Matrix for Next Task:\n{confusion_matrix_next}')
         sys.stdout.flush()
 
         # Check for early stopping

@@ -6,7 +6,7 @@ import sys
 import os
 
 class VideoDataset(Dataset):
-    def __init__(self, csv_file, transform=None, addpath=None, cache_dir='/data2/furuya/cache'):
+    def __init__(self, csv_file, transform=None, addpath=None, cache_dir='/data/furuya/cache'):
         # Get the DataFrame from the CSV file
         self.data_frame = pd.read_csv(csv_file)
         # Initialize the transform
@@ -47,7 +47,7 @@ class VideoDataset(Dataset):
         if next_label == 2:
             next_label = 1
 
-        current_label = torch.tensor(current_label, dtype=torch.float)
-        next_label = torch.tensor(next_label, dtype=torch.float)
+        current_label = torch.tensor(current_label, dtype=torch.long)
+        next_label = torch.tensor(next_label, dtype=torch.long)
 
         return video, (current_label, next_label)

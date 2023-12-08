@@ -49,8 +49,7 @@ def main(opt):
     df = pd.read_csv(csv_file)
     predictions = []
     time_list = []
-    plot_list = []
-    prediction_numbers = []
+    true_values = []
 
     for idx, row in df.iterrows():
         predicted_next = None
@@ -61,31 +60,31 @@ def main(opt):
             video = video2tensor(video_path).to(device)
             video = video.unsqueeze(0)
             with torch.no_grad():
-                current_output, next_output_origin = model(video)
-                plot_list.append(current_output.item())
-                plot_list.append(next_output_origin.item())
-                probs_current = torch.sigmoid(current_output)
-                probs_next = torch.sigmoid(next_output_origin)
-                predicted_current = (probs_current >= 0.5).squeeze()
-                predicted_next = (probs_next >= 0.5).squeeze()
+                current_outputs, next_outputs = model(inputs)
+
+                # Predicted class with highest probability
+                _, predicted_current = torch.max(current_outputs, 1)
+                _, predicted_next = torch.max(next_outputs, 1)
                 predictions.append(predicted_current.item())
-                predicted_next = predicted_next.item()
-                predictions.append(predicted_next)
-                prediction_numbers.append(current_output.item())
-                prediction_numbers.append(next_output_origin.item())
+                predictions.append(predicted_next.item())
+
             end_time = datetime.datetime.now()
             time_list.append((end_time - start_time).total_seconds())
 
+        true_value = 1 if row['status'] == 2 else row['status']
+        true_values.append(true_value)
+
     df['prediction'] = predictions
-    df['prediction_number'] = prediction_numbers
     df.to_csv(opt.output_csv, index=False)
     average_time = sum(time_list)/len(time_list)
     print(f'Average time: {average_time} seconds')
 
-    plt.plot(plot_list, marker='o', linestyle='-')
+    plt.plot(predictions, marker='o', linestyle='-', label='pred')
+    plt.plot(true_values, marker='x', linestyle='--', label='true')
     plt.title("Test Predictions")
     plt.xlabel("Time")
     plt.ylabel("Prediction")
+    plt.legend()
     plt.grid(True)
     plt.savefig('./test_predictions.png')
 
