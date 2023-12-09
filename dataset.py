@@ -6,17 +6,19 @@ import sys
 import os
 
 class VideoDataset(Dataset):
-    def __init__(self, csv_file, transform=None, addpath=None, cache_dir='/data/furuya/cache'):
+    def __init__(self, csv_file, transform=None, addpath=None, cache_dir='/data/furuya/graycache', usecache=False):
         # Get the DataFrame from the CSV file
         self.data_frame = pd.read_csv(csv_file)
         # Initialize the transform
         self.transform = transform
         self.add_path = addpath
         self.cache_dir = cache_dir
+        self.usecache = usecache
 
-        if not os.path.exists(self.cache_dir):
-            os.makedirs(self.cache_dir)
-        self._cache_videos()
+        if usecache:
+            if not os.path.exists(self.cache_dir):
+                os.makedirs(self.cache_dir)
+            self._cache_videos()
 
     def __len__(self):
         return len(self.data_frame)
@@ -37,11 +39,20 @@ class VideoDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        cache_path = os.path.join(self.cache_dir, f'video_{idx}.pt')
-        video = torch.load(cache_path)
+        if self.usecache:
+            cache_path = os.path.join(self.cache_dir, f'video_{idx}.pt')
+            video = torch.load(cache_path)
+
+        else:
+            video_path = self.add_path + "/" + self.data_frame.iloc[idx, 0]
+            video, _, _ = read_video(video_path, start_pts=0, end_pts=None, pts_unit='sec')
+            video = video.permute(3, 0, 1, 2)
+            if self.transform:
+                video = self.transform(video)
 
         current_label = self.data_frame.iloc[idx, 1]
         next_label = self.data_frame.iloc[idx + 1, 1] if idx + 1 < len(self.data_frame) else current_label
+
         if current_label == 2:
             current_label = 1
         if next_label == 2:

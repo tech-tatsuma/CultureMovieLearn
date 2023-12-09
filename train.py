@@ -130,6 +130,10 @@ def train(opt):
     patience = opt.patience
     learning_rate = opt.lr
     batch = opt.batch
+    if opt.usecache == 'true':
+        cache = True
+    else:
+        cache = False
 
     addpath = os.path.dirname(csv_file)
 
@@ -137,14 +141,14 @@ def train(opt):
     transform = Compose([
         UniformTemporalSubsample(25),
         Lambda(lambda x: x / 255.0),
-        # VideoGrayscale(num_output_channels=3),
+        VideoGrayscale(num_output_channels=3),
         Lambda(lambda x: normalize_video(x, mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225])),
         Resize((256, 256)),
-        VideoColorJitter(brightness=0.5)
+        # VideoColorJitter(brightness=0.3)
     ])
 
     # Creating the dataset
-    video_dataset = VideoDataset(csv_file=csv_file, transform=transform, addpath=addpath)
+    video_dataset = VideoDataset(csv_file=csv_file, transform=transform, addpath=addpath, usecache=cache)
     # Splitting the data into training, validation, and test sets
     train_size = int(0.7 * len(video_dataset))
     val_size = len(video_dataset) - train_size
@@ -154,8 +158,8 @@ def train(opt):
     val_sampler = create_balanced_sampler(val_dataset)
 
     # Creating data loaders
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch, sampler=train_sampler, num_workers=4)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, sampler=val_sampler, num_workers=4)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch, sampler=train_sampler, num_workers=8)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, sampler=val_sampler, num_workers=8)
 
     # Initializing the model
     model = CustomSlowFast(device=device, num_classes=2)
@@ -284,7 +288,7 @@ def train(opt):
         # Check for early stopping
         if val_loss_min is None or val_loss < val_loss_min:
             # Save model if validation loss decreased
-            model_save_name = f'./latestresult/lr{learning_rate}_ep{epochs}_pa{patience}.pt'
+            model_save_name = f'./noncacheresult/lr{learning_rate}_ep{epochs}_pa{patience}.pt'
             torch.save(model.state_dict(), model_save_name)
             val_loss_min = val_loss
             val_loss_min_epoch = epoch
@@ -313,7 +317,7 @@ def train(opt):
 
     plt.title("Training and Validation CrossEntropy Loss")
     plt.title("Accuracy")
-    plt.savefig(f'./latestgraph/lr{learning_rate}_ep{epochs}_pa{patience}.png')
+    plt.savefig(f'./noncachegraph/lr{learning_rate}_ep{epochs}_pa{patience}.png')
 
     # Return final training and validation loss
     return train_loss, val_loss_min
@@ -333,6 +337,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=0.0001, help='learning rate')
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     parser.add_argument('--lr_search', type=str, default='false', help='whether to perform learning rate search')
+    parser.add_argument('--usecache', type=str, default='false', help='device to use for training')
     opt = parser.parse_args()
 
     # Learning rate search if specified
