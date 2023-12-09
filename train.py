@@ -176,7 +176,7 @@ def train(opt):
 
     # Setting up the optimizer and loss function
     optimizer = optim.Adam(model.parameters(), lr=opt.lr)
-    # criterion = BCEWithLogitsLoss()
+
     criterion = nn.CrossEntropyLoss()
 
     # Initialize minimum validation loss for early stopping

@@ -146,7 +146,7 @@ def main(opt):
     print(f'Average time: {average_time} seconds')
 
     plt.figure()
-    plt.scatter(range(len(predictions)), predictions, c='blue', label='pred', marker='o')
+    plt.scatter(range(len(predictions)), predictions, c='blue', label='pred', marker='o', s=5)
 
     change_points = [i for i in range(1, len(true_values)) if true_values[i] != true_values[i-1]]
     for i in change_points:
