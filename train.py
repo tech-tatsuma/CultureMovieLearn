@@ -141,10 +141,10 @@ def train(opt):
     transform = Compose([
         UniformTemporalSubsample(25),
         Lambda(lambda x: x / 255.0),
-        VideoGrayscale(num_output_channels=3),
+        # VideoGrayscale(num_output_channels=3),
         Lambda(lambda x: normalize_video(x, mean=[0.45, 0.45, 0.45], std=[0.225, 0.225, 0.225])),
         Resize((256, 256)),
-        # VideoColorJitter(brightness=0.3)
+        VideoColorJitter(brightness=0.3)
     ])
 
     # Creating the dataset
@@ -162,7 +162,7 @@ def train(opt):
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch, sampler=val_sampler, num_workers=8)
 
     # Initializing the model
-    model = CustomSlowFast(device=device, num_classes=2)
+    model = CustomSlowFast(device=device, num_classes=1)
 
     # Utilizing multiple GPUs if available
     if torch.cuda.device_count() > 1:
@@ -177,7 +177,8 @@ def train(opt):
     # Setting up the optimizer and loss function
     optimizer = optim.Adam(model.parameters(), lr=opt.lr)
 
-    criterion = nn.CrossEntropyLoss()
+    # criterion = nn.CrossEntropyLoss()
+    criterion = nn.BCEWithLogitsLoss()
 
     # Initialize minimum validation loss for early stopping
     val_loss_min = None
@@ -211,8 +212,8 @@ def train(opt):
 
             # Forward pass and backward pass
             current_outputs, next_outputs = model(inputs)
-            loss_current = criterion(current_outputs, current_labels)
-            loss_next = criterion(next_outputs, next_labels)
+            loss_current = criterion(current_outputs, current_labels.unsqueeze(1))
+            loss_next = criterion(next_outputs, next_labels.unsqueeze(1))
             # Combine losses for multitasking
             loss = (loss_current + loss_next) / 2
             loss.backward()
@@ -228,8 +229,10 @@ def train(opt):
         model.eval()
 
         # Initialize variables for accuracy calculation
-        correct = 0
-        total = 0
+        total_correct = 0
+        correct_current = 0
+        total_next = 0
+        correct_next = 0
 
         # Validation phase
         with torch.no_grad():
@@ -249,18 +252,18 @@ def train(opt):
                 current_outputs, next_outputs = model(inputs)
 
                 # Predicted class with highest probability
-                _, predicted_current = torch.max(current_outputs, 1)
-                _, predicted_next = torch.max(next_outputs, 1)
+                predicted_current = torch.sigmoid(current_outputs) >= 0.5
+                predicted_next = torch.sigmoid(next_outputs) >= 0.5
 
                 # Accumulate validation losses for both tasks
-                val_loss += criterion(current_outputs, current_labels).item()
-                val_loss += criterion(next_outputs, next_labels).item()
+                val_loss += criterion(current_outputs, current_labels.unsqueeze(1)).item()
+                val_loss += criterion(next_outputs, next_labels.unsqueeze(1)).item()
 
                 # Accumulate accuracy
-                total += current_labels.size(0)
-                correct += (predicted_current == current_labels).sum().item()
-                total += next_labels.size(0)
-                correct += (predicted_next == next_labels).sum().item()
+                total_current += current_labels.size(0)
+                correct_current += (predicted_current == current_labels).sum().item()
+                total_next += next_labels.size(0)
+                correct_next += (predicted_next == next_labels).sum().item()
 
                 # Store predictions and labels
                 all_current_labels.extend(current_labels.cpu().numpy())
@@ -268,10 +271,10 @@ def train(opt):
                 all_predicted_current.extend(predicted_current.cpu().numpy())
                 all_predicted_next.extend(predicted_next.cpu().numpy())
             
-            accuracy = 100 * correct / total
+
+        accuracy_current = 100 * correct_current / total_current
+        accuracy_next = 100 * correct_next / total_next
                 
-        # Calculate validation accuracy and loss
-        accuracy = 100 * correct / total
         val_loss /= len(val_loader)
         val_losses.append(val_loss)
         val_accuracy.append(accuracy)
@@ -280,7 +283,9 @@ def train(opt):
         confusion_matrix_current = confusion_matrix(all_current_labels, all_predicted_current)
         confusion_matrix_next = confusion_matrix(all_next_labels, all_predicted_next)
 
-        print(f'Epoch {epoch+1}, Training loss: {train_loss:.4f}, Validation loss: {val_loss:.4f}, Validation Accuracy: {accuracy:.2f}%')
+        print(f'Epoch {epoch+1}, Training loss: {train_loss:.4f}, Validation loss: {val_loss:.4f}')
+        print(f"Accuracy for current task: {accuracy_current:.2f}%")
+        print(f"Accuracy for next task: {accuracy_next:.2f}%")
         print(f'Confusion Matrix for Current Task:\n{confusion_matrix_current}')
         print(f'Confusion Matrix for Next Task:\n{confusion_matrix_next}')
         sys.stdout.flush()
@@ -288,7 +293,7 @@ def train(opt):
         # Check for early stopping
         if val_loss_min is None or val_loss < val_loss_min:
             # Save model if validation loss decreased
-            model_save_name = f'./noncacheresult/lr{learning_rate}_ep{epochs}_pa{patience}.pt'
+            model_save_name = f'./binaryresult/lr{learning_rate}_ep{epochs}_pa{patience}.pt'
             torch.save(model.state_dict(), model_save_name)
             val_loss_min = val_loss
             val_loss_min_epoch = epoch
@@ -317,7 +322,7 @@ def train(opt):
 
     plt.title("Training and Validation CrossEntropy Loss")
     plt.title("Accuracy")
-    plt.savefig(f'./noncachegraph/lr{learning_rate}_ep{epochs}_pa{patience}.png')
+    plt.savefig(f'./binarygraph/lr{learning_rate}_ep{epochs}_pa{patience}.png')
 
     # Return final training and validation loss
     return train_loss, val_loss_min
@@ -343,7 +348,7 @@ if __name__ == '__main__':
     # Learning rate search if specified
     if opt.lr_search == 'true':
         # Perform learning rate search
-        learning_rates = [0.00001, 0.0001, 0.001, 0.01, 0.1]
+        learning_rates = [0.001, 0.01, 0.00001, 0.0001, 0.1]
         best_loss = float('inf')
         best_lr = 0
         train_losses = []
