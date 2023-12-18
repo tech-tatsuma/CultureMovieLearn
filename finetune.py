@@ -229,10 +229,11 @@ def train(opt):
         model.eval()
 
         # Initialize variables for accuracy calculation
-        total_correct = 0
+        total_current = 0
         correct_current = 0
         total_next = 0
         correct_next = 0
+        val_loss = 0.0
 
         # Validation phase
         with torch.no_grad():
@@ -252,8 +253,8 @@ def train(opt):
                 current_outputs, next_outputs = model(inputs)
 
                 # Predicted class with highest probability
-                predicted_current = torch.sigmoid(current_outputs) >= 0.5
-                predicted_next = torch.sigmoid(next_outputs) >= 0.5
+                predicted_current = torch.sigmoid(current_outputs).squeeze() >= 0.5
+                predicted_next = torch.sigmoid(next_outputs).squeeze() >= 0.5
 
                 # Accumulate validation losses for both tasks
                 val_loss += criterion(current_outputs, current_labels.unsqueeze(1)).item()
@@ -261,9 +262,9 @@ def train(opt):
 
                 # Accumulate accuracy
                 total_current += current_labels.size(0)
-                correct_current += (predicted_current == current_labels).sum().item()
+                correct_current += (predicted_current == current_labels.bool()).sum().item()
                 total_next += next_labels.size(0)
-                correct_next += (predicted_next == next_labels).sum().item()
+                correct_next += (predicted_next == next_labels.bool()).sum().item()
 
                 # Store predictions and labels
                 all_current_labels.extend(current_labels.cpu().numpy())

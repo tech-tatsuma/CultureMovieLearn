@@ -11,7 +11,7 @@ class VideoDataset(Dataset):
         self.data_frame = pd.read_csv(csv_file)
         # Initialize the transform
         self.transform = transform
-        self.add_path = addpath
+        self.add_path = addpath.replace('\\', '/') if addpath else None
         self.cache_dir = cache_dir
         self.usecache = usecache
 
@@ -26,6 +26,7 @@ class VideoDataset(Dataset):
     def _cache_videos(self):
         for idx in range(len(self.data_frame)):
             video_path = self.add_path + "/" + self.data_frame.iloc[idx, 0]
+            video_path = video_path.replace('\\', '/')
             cache_path = os.path.join(self.cache_dir, f'video_{idx}.pt')
 
             if not os.path.exists(cache_path):
@@ -45,6 +46,7 @@ class VideoDataset(Dataset):
 
         else:
             video_path = self.add_path + "/" + self.data_frame.iloc[idx, 0]
+            video_path = video_path.replace('\\', '/')
             video, _, _ = read_video(video_path, start_pts=0, end_pts=None, pts_unit='sec')
             video = video.permute(3, 0, 1, 2)
             if self.transform:
