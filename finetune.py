@@ -170,7 +170,7 @@ def train(opt):
         model = nn.DataParallel(model)
 
     model = model.to(device)
-
+    model.load_state_dict(torch.load(opt.pretrained_model))
     # Calculating model size
     calculate_model_size(model)
 
@@ -343,6 +343,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=42, help='random seed')
     parser.add_argument('--lr_search', type=str, default='false', help='whether to perform learning rate search')
     parser.add_argument('--usecache', type=str, default='false', help='device to use for training')
+    parser.add_argument('--pretrained_model', type=str, required=True, help='path to pretrained model')
     opt = parser.parse_args()
 
     # Learning rate search if specified
