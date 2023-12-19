@@ -91,6 +91,7 @@ def main(opt):
         if idx%2 == 0:
             video_path = row[0]
             video_path = os.path.join(addpath, video_path)
+            video_path = video_path.replace('\\', '/')
             start_time = datetime.datetime.now()
             video = video2tensor(video_path).to(device)
             video = video.unsqueeze(0)
@@ -108,6 +109,9 @@ def main(opt):
 
         true_value = 1 if row['status'] == 2 else row['status']
         true_values.append(true_value)
+
+    if len(df) % 2 != 0:
+        predictions.pop()
 
     df['prediction'] = predictions
     df.to_csv(opt.output_csv, index=False)
