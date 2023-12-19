@@ -2,7 +2,7 @@ import cv2
 import csv
 import os
 
-def write_values_on_video(video_path, value, status, output_path):
+def write_values_on_video(video_path, value, status, true_data, output_path):
     # 動画を読み込む
     cap = cv2.VideoCapture(video_path)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -22,6 +22,7 @@ def write_values_on_video(video_path, value, status, output_path):
         font = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(frame, f'Value: {value}', (width - 200, 30), font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
         cv2.putText(frame, f'Status: {status}', (width - 200, 60), font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, f'True: {true_data}', (width - 200, 90), font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
 
         # 書き込んだフレームを出力
         out.write(frame)
@@ -58,7 +59,6 @@ def concatenate_videos(video_paths, output_path):
     out.release()
 
 def process_csv_and_write_text(csv_path, final_output_path):
-
     csv_dir = os.path.dirname(csv_path)
 
     with open(csv_path, 'r') as file:
@@ -70,11 +70,17 @@ def process_csv_and_write_text(csv_path, final_output_path):
         for index, row in enumerate(reader):
             relative_video_path = row[0]
             video_path = os.path.join(csv_dir, relative_video_path)
-            prediction = float(row[2])
-            status = '給餌中' if prediction >= 0.2 else '給餌停止'
+            video_path = video_path.replace('\\', '/')
+            try:
+                prediction = float(row[3])
+            except ValueError:
+                # predictionの値が無効な場合はこの行の処理をスキップ
+                continue
+            status = 'Feeding' if prediction >= 0.5 else 'No Feeding'
+            true_data = 'No Feeding' if row[1] == '0' else 'Feeding'  # ここを修正
             output_path = f'output_{index}.mp4'  # 出力ファイル名を生成
 
-            write_values_on_video(video_path, prediction, status, output_path)
+            write_values_on_video(video_path, prediction, status, true_data, output_path)
             outputs.append(output_path)
 
         concatenate_videos(outputs, final_output_path)
@@ -84,7 +90,7 @@ def process_csv_and_write_text(csv_path, final_output_path):
             os.remove(output)
 
 if __name__ == '__main__':
-    csv_path = 'result.csv'
-    final_output_path = 'output.mp4'
+    csv_path = '/data/furuya/side_datasets/side_result2_modified.csv'
+    final_output_path = './sideoutput.mp4'
     process_csv_and_write_text(csv_path, final_output_path)
 
