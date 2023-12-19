@@ -10,19 +10,22 @@ def extract_column_from_csv_skip_header(csv_path, index):
     data = []
     with open(csv_path, mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
-        next(reader, None)
+        next(reader, None)  # ヘッダーをスキップ
         for row in reader:
             if len(row) > index:
-                append_data = row[index]
-                if index == 1:
-                    if row[index] == '0':
-                        append_data = 0
-                    else:
-                        append_data = 1
-                    data.append(float(append_data))
-                data.append(row[index])
+                try:
+                    # 文字列を浮動小数点数に変換
+                    append_data = float(row[index])
+                    if index == 1:
+                        if append_data == 2.0:
+                            append_data = 1.0
+                except ValueError:
+                    # 数値に変換できない場合はNoneを追加
+                    append_data = None
+                data.append(append_data)
             else:
                 data.append(None)
+
     return data
 
 def create_movie(input_video, output_video, csv_file):
@@ -72,6 +75,7 @@ def create_movie(input_video, output_video, csv_file):
             prediction_value = predictions[label_index]
             
             # 真の値と予測値をプロット
+            ax.set_ylim([0, 1.2])
             ax.plot(range(label_index + 1), trues[:label_index + 1], label='True Labels')
             ax.plot(range(label_index + 1), predictions[:label_index + 1], label='Predicted Labels')
 
